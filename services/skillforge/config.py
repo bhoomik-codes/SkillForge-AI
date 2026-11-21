@@ -21,4 +21,8 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "")
 JUDGE_URL = os.getenv("JUDGE_URL", "").rstrip("/")
 JUDGE_TOKEN = os.getenv("JUDGE_TOKEN", "")
+HISTORY_PAGE_LIMIT = int(os.getenv("HISTORY_PAGE_LIMIT", "20"))
+if not 1 <= HISTORY_PAGE_LIMIT <= 50:
+    raise RuntimeError("HISTORY_PAGE_LIMIT must be between 1 and 50.")
+SARVAM_API_KEY = os.getenv("SARVAM_API_KEY", "")
 COOKIE = "__Host-skillforge" if PRODUCTION else "skillforge"

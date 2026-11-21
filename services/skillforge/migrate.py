@@ -16,6 +16,8 @@ INDEXES = {
     "sf_session_owner": ("SFSession", "owner"),
     "sf_session_expiry": ("SFSession", "expires"),
     "sf_scan_owner_created": ("SFScan", "owner, n.created"),
+    "sf_knowledge_scan_record": ("SFKnowledgeRecord", "scan, n.id"),
+    "sf_knowledge_scan": ("SFKnowledgeRecord", "scan"),
     "sf_scan_queue": ("SFScan", "state, n.updated"),
     "sf_attempt_owner_created": ("SFAttempt", "owner, n.created"),
 }

@@ -6,6 +6,7 @@ import secrets
 from .analysis import structure
 from .db import encode, entity, expire_guests, now, transaction
 from .github import GitHubError, get_snapshot, source_href
+from .knowledge import fetch_graph, store_graph
 from .scoring import quality
 
 logger = logging.getLogger(__name__)
@@ -82,9 +83,14 @@ async def run_scans():
 
 
 async def perform(scan, lease):
+    async def index(http, repo, revision, info):
+        async with asyncio.timeout(155):
+            records, edges, gaps = await fetch_graph(http, repo, revision, info)
+        await asyncio.to_thread(store_graph, scan["id"], lease, revision, records, edges, gaps)
+
     try:
         async with asyncio.timeout(240):
-            snapshot = await get_snapshot(scan["repo"])
+            snapshot = await get_snapshot(scan["repo"], on_revision=index)
             payload = await asyncio.to_thread(compile_snapshot, snapshot)
             if scan["options"].get("ai"):
                 from .review import review

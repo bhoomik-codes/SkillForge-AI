@@ -111,7 +111,7 @@ async def read_source(http, repo, revision, path):
     return body.decode("utf-8", errors="replace")
 
 
-async def get_snapshot(repo):
+async def get_snapshot(repo, *, on_revision=None):
     async with client() as http:
         info = await api(http, "/repos/" + repo, limit=128_000)
         if info.get("private") or info.get("visibility") != "public":
@@ -119,6 +119,8 @@ async def get_snapshot(repo):
         branch = info["default_branch"]
         commit = await api(http, f"/repos/{repo}/commits/{quote(branch, safe='')}", limit=1_500_000)
         revision = commit["sha"]
+        if on_revision:
+            await on_revision(http, repo, revision, info)
         tree_sha = commit["commit"]["tree"]["sha"]
         if not SHA.fullmatch(revision) or not SHA.fullmatch(tree_sha):
             raise GitHubError("GitHub returned an unsupported revision.")

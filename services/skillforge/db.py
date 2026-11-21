@@ -160,6 +160,14 @@ def workspace_write(owner, token):
 
 def erase(tx, owner):
     # This workspace is already locked. Separate indexed lookups also leave other products' labels alone.
+    tx.run("""
+        MATCH (s:SFScan {owner: $owner}) WITH s ORDER BY s.id
+        SET s.lock = coalesce(s.lock, 0) + 1
+        """, owner=owner).consume()
+    tx.run("""
+        MATCH (:SFScan {owner: $owner})-[:SF_HAS_EVIDENCE]->(record:SFKnowledgeRecord)
+        DETACH DELETE record
+        """, owner=owner).consume()
     for label in ("SFScan", "SFAttempt", "SFProfile", "SFSession", "SFWorkspace"):
         tx.run(f"MATCH (n:{label} {{owner: $owner}}) DELETE n", owner=owner).consume()
 

@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from neo4j.exceptions import DriverError, Neo4jError
 from pydantic import BaseModel, Field
 
-from . import config
+from . import config, sarvam
 from .career import router as career_router
 from .db import (
     WorkspaceExpired,
@@ -46,13 +46,17 @@ from .github import (
     public_repositories,
     read_source,
     repo_name,
+    source_href,
 )
+from .knowledge import graph_status, remove_graph, trail
+from .knowledge_anchor import enrich
 from .migrate import migrate, require_current_schema
 from .practice import router as practice_router
 from .review import enabled as ai_enabled
 from .sample import SNAPSHOT, SOURCES
 from .scanning import compile_snapshot, run_scans, source_for
 from .scoring import OPTIONAL, RUBRIC, finalize
+from .trail_answer import select_evidence
 
 WORKER_ENABLED = os.getenv("SCAN_WORKER_ENABLED", "true").lower() == "true"
 DIST = config.ROOT / "apps" / "web" / "dist"
@@ -86,13 +90,14 @@ async def boundaries(request, call_next):
             rejection = JSONResponse({"detail": "Request origin could not be verified."}, 403)
         else:
             content_length = request.headers.get("content-length")
-            if content_length and (not content_length.isdecimal() or int(content_length) > 64_000):
+            limit = sarvam.MAX_AUDIO if request.url.path == "/api/transcribe" else 64_000
+            if content_length and (not content_length.isdecimal() or int(content_length) > limit):
                 rejection = JSONResponse({"detail": "Request is too large."}, 413)
     response = rejection if rejection is not None else await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
     is_api = request.url.path.startswith("/api/")
     if is_api:
         response.headers["Cache-Control"] = "no-store"
@@ -160,7 +165,7 @@ def workspace_session(request: Request, response: Response):
         write_cookie(response, provision())
     return {"login": account["github"] if account else None, "oauth": bool(
         config.GITHUB_CLIENT_ID and config.GITHUB_CLIENT_SECRET,
-    ), "ai": ai_enabled(), "judge": bool(config.JUDGE_URL and config.JUDGE_TOKEN)}
+    ), "ai": ai_enabled(), "judge": bool(config.JUDGE_URL and config.JUDGE_TOKEN), "voice": sarvam.enabled()}
 
 
 @app.get("/api/auth/github")
@@ -243,6 +248,7 @@ class RubricApproval(BaseModel):
 
 def scan_view(row, details=False):
     response = {key: row[key] for key in ("id", "repo", "state", "created", "updated")}
+    response["knowledgeReady"] = bool(row.get("knowledgeRevision"))
     if row["result"]:
         if row["state"] == "failed":
             response["result"] = row["result"]
@@ -353,8 +359,102 @@ def publish_rubric(scan_id: str, body: RubricApproval, request: Request):
 def delete_scan(scan_id: str, request: Request):
     owner = owner_of(request)
     with workspace_write(owner, request.cookies[config.COOKIE]) as tx:
-        tx.run("MATCH (s:SFScan {owner: $owner, id: $id}) DELETE s", owner=owner, id=scan_id).consume()
+        scan = tx.run("""
+            MATCH (s:SFScan {owner: $owner, id: $id})
+            SET s.lock = coalesce(s.lock, 0) + 1 RETURN s.id
+            """, owner=owner, id=scan_id).single()
+        if scan:
+            remove_graph(tx, scan_id)
+            tx.run("MATCH (s:SFScan {owner: $owner, id: $id}) DELETE s", owner=owner, id=scan_id).consume()
     return Response(status_code=204)
+
+
+class TrailQuestion(BaseModel):
+    question: str = Field(min_length=1, max_length=1500)
+    path: str | None = Field(default=None, max_length=400)
+    line: int | None = Field(default=None, ge=1, le=1_000_000)
+    ai: bool = False
+
+
+def reserve_assistant(owner, token, voice):
+    timestamp = now()
+    with workspace_write(owner, token) as tx:
+        row = tx.run("""
+            MATCH (w:SFWorkspace {owner: $owner}), (store:SFStore {id: 'skillforge'})
+            SET store.assistantVersion = coalesce(store.assistantVersion, 0) + 1
+            WITH w, store, [at IN coalesce(w.assistantCalls, []) WHERE at > $cutoff] AS ownerCalls,
+                 [at IN coalesce(store.assistantCalls, []) WHERE at > $cutoff] AS serviceCalls
+            WHERE size(ownerCalls) < $ownerLimit AND size(serviceCalls) < 40
+            SET w.assistantCalls = ownerCalls + $now, store.assistantCalls = serviceCalls + $now
+            RETURN w.owner
+            """, owner=owner, cutoff=timestamp - 60, ownerLimit=6 if voice else 12, now=timestamp).single()
+        if not row:
+            raise HTTPException(429, "The repository assistant is busy. Try again in a minute.")
+
+
+@app.get("/api/scans/{scan_id}/knowledge")
+def knowledge_status(scan_id: str, request: Request):
+    state = graph_status(owner_of(request), scan_id)
+    if state is None:
+        raise HTTPException(404, "This scan is unavailable in your workspace.")
+    return state
+
+
+@app.get("/api/scans/{scan_id}/knowledge/preview")
+def knowledge_preview(scan_id: str, request: Request):
+    owner = owner_of(request)
+    state = graph_status(owner, scan_id)
+    if state is None:
+        raise HTTPException(404, "This scan is unavailable in your workspace.")
+    if not state["revision"]:
+        raise HTTPException(409, "The knowledge graph is still being prepared.")
+    return trail(owner, scan_id, "")
+
+
+@app.post("/api/scans/{scan_id}/knowledge/ask")
+async def ask_knowledge(scan_id: str, body: TrailQuestion, request: Request):
+    owner = await asyncio.to_thread(owner_of, request)
+    state = await asyncio.to_thread(graph_status, owner, scan_id)
+    if state is None:
+        raise HTTPException(404, "This scan is unavailable in your workspace.")
+    if not state["revision"]:
+        raise HTTPException(409, "A knowledge graph is unavailable for this scan. Import the repository again.")
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(422, "Enter a question about this repository.")
+    path = body.path.strip() if body.path else None
+    if path and (any(part in {"", ".", ".."} for part in path.split("/")) or chr(92) in path):
+        raise HTTPException(422, "Enter a repository-relative file path.")
+    await asyncio.to_thread(reserve_assistant, owner, request.cookies[config.COOKIE], False)
+    anchors, line_content = await enrich(owner, request.cookies[config.COOKIE], scan_id, state,
+                                         question, path, body.line)
+    graph = await asyncio.to_thread(trail, owner, scan_id, question + " " + line_content, path, anchors)
+    answer = await select_evidence(question, graph, body.ai)
+    return {**answer, "graph": graph, "source": source_href(
+        state["repo"], state["revision"], path, body.line,
+    ) if path else None}
+
+
+@app.post("/api/transcribe")
+async def transcribe_question(request: Request):
+    owner = await asyncio.to_thread(owner_of, request)
+    if not sarvam.enabled():
+        raise HTTPException(503, "Sarvam voice input is unavailable. You can type your question.")
+    media_type = request.headers.get("content-type", "").split(";", 1)[0]
+    if media_type not in sarvam.AUDIO_TYPES:
+        raise HTTPException(415, "This recording format is unsupported.")
+    audio = bytearray()
+    async for chunk in request.stream():
+        if len(audio) + len(chunk) > sarvam.MAX_AUDIO:
+            raise HTTPException(413, "The recording is too large.")
+        audio.extend(chunk)
+    if not audio:
+        raise HTTPException(422, "Record a question before transcribing.")
+    await asyncio.to_thread(reserve_assistant, owner, request.cookies[config.COOKIE], True)
+    try:
+        return {"text": await sarvam.transcribe(bytes(audio), media_type)}
+    except (httpx.HTTPError, KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(502, "Sarvam could not transcribe this recording. Try again or type your question.") from exc
 
 
 @app.get("/api/contributions")

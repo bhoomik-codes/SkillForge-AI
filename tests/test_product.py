@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 from fastapi.testclient import TestClient
 from neo4j.exceptions import ServiceUnavailable
 
@@ -19,7 +20,7 @@ os.environ["SCAN_WORKER_ENABLED"] = "false"
 os.environ["JUDGE_URL"] = ""
 os.environ["JUDGE_TOKEN"] = ""
 
-from skillforge import config
+from skillforge import config, knowledge, sarvam, trail_answer
 from skillforge.db import close, now, provision, session, transaction
 from skillforge.decision_context import explain
 from skillforge.judge import matches
@@ -388,3 +389,89 @@ class WorkspaceTests(unittest.TestCase):
             removed = owner.delete(route + "/github", headers=ORIGIN).raise_for_status().json()
             self.assertIsNone(removed["activity"])
             self.assertEqual(removed["projects"][0]["completed"], [task["id"]])
+
+
+class KnowledgeGraphTests(unittest.TestCase):
+    def test_repository_with_no_supported_source_remains_unranked(self):
+        unsupported = {**READER, "sources": {}, "paths": {"app/src/test/kotlin/ReaderTest.kt"}, "eligible": 0}
+        payload = compile_snapshot(unsupported)
+        self.assertFalse(payload["quality"]["rankable"])
+        self.assertIsNone(payload["quality"]["score"])
+
+
+    def test_import_persists_and_traces_a_followup_through_neo4j(self):
+        original = {"number": 8, "title": "Reader controls obscure navigation",
+                    "body": "The reader controls obscure navigation."}
+        first_fix = {"number": 12, "title": "Move controls to the dock", "body": "Fixes #8"}
+        followup = {"number": 20, "title": "Dock contrast regression",
+                    "body": "Regression from #12. The dock label is hard to read."}
+        second_fix = {"number": 31, "title": "Improve dock contrast",
+                      "body": "Fixes #20. We use a lighter dock label to avoid unreadable contrast."}
+        repo = READER["repo"]
+        nodes = [knowledge.numbered(record, kind, repo) for record, kind in [
+            (original, "issue"), (first_fix, "pr"), (followup, "issue"), (second_fix, "pr"),
+        ]]
+        edges = knowledge.relationships(repo, nodes, [], [])
+
+        async def load_fixture(repository, *, on_revision):
+            await on_revision(None, repository, READER["revision"], {})
+            return READER
+
+        with TestClient(app) as owner, TestClient(app) as other:
+            owner.get("/api/session").raise_for_status()
+            other.get("/api/session").raise_for_status()
+            job = owner.post("/api/scans", json={"repository": repo}, headers=ORIGIN).raise_for_status().json()
+            url = "/api/scans/" + job["id"] + "/knowledge"
+            self.assertIsNone(owner.get(url).json()["revision"])
+            with patch("skillforge.scanning.get_snapshot", side_effect=load_fixture), patch(
+                "skillforge.scanning.fetch_graph", return_value=(nodes, edges, ["discussions"]),
+            ):
+                asyncio.run(perform(*claim()))
+            status = owner.get(url).raise_for_status().json()
+            self.assertEqual((status["records"], status["edges"]), (4, 3))
+            self.assertEqual(status["gaps"], ["discussions"])
+            self.assertEqual(other.get(url).status_code, 404)
+            preview = owner.get(url + "/preview").raise_for_status().json()
+            self.assertEqual(len(preview["nodes"]), 4)
+            with patch("skillforge.main.enrich", return_value=([], "")):
+                answer = owner.post(url + "/ask", headers=ORIGIN, json={
+                    "question": "Why was dock contrast changed in #31?",
+                }).raise_for_status().json()
+            self.assertEqual({node["id"] for node in answer["graph"]["nodes"]},
+                             {"issue:8", "pr:12", "issue:20", "pr:31"})
+            self.assertTrue(any("lighter dock label" in item["quote"] for item in answer["evidence"]))
+            self.assertIn("REPORTS_REGRESSION_FROM", {edge["kind"] for edge in answer["graph"]["edges"]})
+            owner.delete("/api/account", headers=ORIGIN).raise_for_status()
+            with transaction() as tx:
+                self.assertEqual(tx.run("MATCH (r:SFKnowledgeRecord {scan: $scan}) RETURN count(r)",
+                                        scan=job["id"]).single()[0], 0)
+
+    def test_ai_cannot_introduce_an_unretrieved_quote(self):
+        question = "Why was dock contrast changed?"
+        quote = "We use a lighter dock label to avoid unreadable contrast."
+        graph = {"nodes": [{"id": "pr:31", "kind": "pr", "title": "Improve dock contrast", "body": quote}]}
+        response = {"candidates": [{"content": {"parts": [{"text": "[99]"}]}}]}
+        client = httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=response)))
+        with patch.object(trail_answer, "enabled", return_value=True), patch.object(
+            trail_answer.httpx, "AsyncClient", return_value=client,
+        ):
+            answer = asyncio.run(trail_answer.select_evidence(question, graph, True))
+        self.assertEqual(answer, {"mode": "retrieved", "evidence": [{"record": "pr:31", "quote": quote}]})
+        unknown = asyncio.run(trail_answer.select_evidence("Why are retries limited?", graph, False))
+        self.assertEqual(unknown, {"mode": "abstained", "evidence": []})
+
+    def test_sarvam_transcription_uses_documented_endpoint(self):
+        def provider(request):
+            self.assertEqual(str(request.url), "https://api.sarvam.ai/speech-to-text")
+            self.assertEqual(request.headers["api-subscription-key"], "fixture")
+            self.assertIn(b"saaras:v4", request.content)
+            return httpx.Response(200, json={"transcript": "Why did the dock change?"})
+
+        with TestClient(app) as client:
+            client.get("/api/session").raise_for_status()
+            with patch.object(config, "SARVAM_API_KEY", "fixture"), patch.object(
+                sarvam.httpx, "AsyncClient", return_value=httpx.AsyncClient(transport=httpx.MockTransport(provider)),
+            ):
+                result = client.post("/api/transcribe", content=b"audio fixture",
+                                     headers={**ORIGIN, "Content-Type": "audio/webm"})
+            self.assertEqual(result.raise_for_status().json(), {"text": "Why did the dock change?"})

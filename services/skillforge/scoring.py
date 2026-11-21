@@ -190,7 +190,7 @@ def collect_checks(snapshot, parsed, sources):
     blocking = token("blocking")
     test_evidence = first_hit(tests, COMPILED["assertions"])
     test_paths = [path for path in paths if test_path(path)]
-    missing_tests = not test_paths and not snapshot["truncated"] and first_source
+    missing_tests = first_source if not test_paths and not snapshot["truncated"] else None
     workflows = first_file([path for path in paths if path.startswith(".github/workflows/")
                             and path.endswith((".yaml", ".yml"))])
     manifest = first_file([path for path in paths if path.rsplit("/", 1)[-1].lower() in MANIFESTS])
