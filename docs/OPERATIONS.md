@@ -59,9 +59,9 @@ Neo4j stores graph metadata in the scan snapshot. Private repository access, Goo
 
 ## Judges’ demo
 
-1. Start SkillForge and choose **Try Futon** or paste `https://github.com/AppFuton/Futon`. Wait for **Stored in Neo4j** in **Ask why**.
-2. Select **Trace a migration regression**. The answer should connect issue #127 to PR #138 and its reference to PR #137. Click the graph edges and open the GitHub evidence.
-3. Select **Explore the dock proposal** in a fresh Futon chat for the draft UI change in PR #142. Its draft status is visible in the trail.
+1. Start SkillForge. The worker prepares the shared, read-only GitHub import of `https://github.com/AppFuton/Futon`. Wait for **Stored in Neo4j** in **Ask why** and confirm it opens immediately in a private browser window before judging.
+2. Select **Trace the migration fix**. Follow issue #127, the fix in PR #138 and the reference to PR #137. Open **View executed Neo4j queries** to show the recorded Cypher.
+3. Select **Find an overridden decision** for PR #112 and PR #146. Then select **Try an unanswered question** to show the evidence boundary.
 4. Set `SARVAM_API_KEY` before starting the app to demonstrate **Dictate with Sarvam**. Dictate, stop, review the transcript, and press **Ask**. Set `GEMINI_API_KEY` and `GEMINI_MODEL` to demonstrate model-assisted evidence selection after consent. Add a `GITHUB_API_TOKEN` authorized for public Discussions to include those in the graph.
 
 To show the persisted graph in Neo4j Browser, run:
@@ -71,7 +71,7 @@ MATCH (s:SFScan {repo: 'appfuton/futon'})
 WHERE s.knowledgeRevision IS NOT NULL
 WITH s ORDER BY s.created DESC LIMIT 1
 MATCH (s)-[:SF_HAS_EVIDENCE]->(a:SFKnowledgeRecord)-[link:SF_EVIDENCE_LINK]->(b:SFKnowledgeRecord)
-WHERE a.number IN [127, 137, 138, 142] OR b.number IN [127, 137, 138, 142]
+WHERE a.number IN [112, 127, 137, 138, 146] OR b.number IN [112, 127, 137, 138, 146]
 RETURN a, link, b LIMIT 60
 ```
 
