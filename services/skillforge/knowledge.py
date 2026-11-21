@@ -262,7 +262,7 @@ def remove_graph(tx, scan_id):
 
 
 def store_graph(scan_id, lease, revision, records, edges, gaps):
-    with transaction(write=True) as tx:
+    with transaction(write=True, timeout=60) as tx:
         locked = tx.run("""
             MATCH (s:SFScan {id: $scan})
             SET s.lock = coalesce(s.lock, 0) + 1

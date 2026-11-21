@@ -1,4 +1,3 @@
-
 #!/bin/sh
 set -eu
 
@@ -27,14 +26,14 @@ printf '%s\n' "Preparing SkillForge's Python environment..."
 if [ -f "$root/.env" ]; then
     if [ -f "$root/.env.local" ]; then
         exec uv run --directory services --locked --no-dev --python 3.12 \
-            --env-file "$root/.env" --env-file "$root/.env.local" python -u "$root/scripts/run_local.py" "$@"
+            --env-file ../.env --env-file ../.env.local python -u "$root/scripts/run_local.py" "$@"
     fi
     exec uv run --directory services --locked --no-dev --python 3.12 \
-        --env-file "$root/.env" python -u "$root/scripts/run_local.py" "$@"
+        --env-file ../.env python -u "$root/scripts/run_local.py" "$@"
 fi
 if [ -f "$root/.env.local" ]; then
     exec uv run --directory services --locked --no-dev --python 3.12 \
-        --env-file "$root/.env.local" python -u "$root/scripts/run_local.py" "$@"
+        --env-file ../.env.local python -u "$root/scripts/run_local.py" "$@"
 fi
 exec uv run --directory services --locked --no-dev --python 3.12 \
     --no-env-file python -u "$root/scripts/run_local.py" "$@"

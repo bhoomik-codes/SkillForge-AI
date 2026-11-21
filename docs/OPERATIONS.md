@@ -33,7 +33,7 @@ npm ci
 npm run dev
 ```
 
-Open [the local workspace](http://localhost:5173/). The seeded example, public URL import, graph, practice catalog and portfolio plan work without account credentials. The judge needs a separate service. The API connects to local Neo4j on port 7687 by default and hosts the scan worker. To serve a compiled web build directly from the API, run `npm run build` and set `APP_ORIGIN=http://127.0.0.1:8765` before starting the API.
+Open [the local workspace](http://localhost:5173/). The shared Futon demo, public URL import, decision and code graphs, practice catalog and portfolio plan work without GitHub sign-in. The judge needs a separate service. The API connects to local Neo4j on port 7687 by default and hosts the scan worker. To serve a compiled web build directly from the API, run `npm run build` and set `APP_ORIGIN=http://127.0.0.1:8765` before starting the API.
 
 For optional integrations, copy `.env.example` to an ignored `.env` at the repo root. From `services`, add `--env-file ../.env` to the `uv run` arguments.
 
@@ -53,9 +53,9 @@ For other production deployments:
 
 ## Current release boundary
 
-The implementation covers public GitHub import and opt-in connected selection, bounded static structure analysis for JavaScript, TypeScript and Python, adaptive repository scoring, practice scoring and portfolio planning. See [adaptive scoring](SCORING.md) for score interpretation and limits. Dynamic dispatch and provider history outside the sample are outside graph coverage. The editor drafts stay in tab memory.
+The implementation covers public GitHub import and opt-in connected selection, bounded static structure analysis for JavaScript, TypeScript and Python, adaptive repository scoring, practice scoring and portfolio planning. See [adaptive scoring](SCORING.md) for score interpretation and limits. Dynamic dispatch is outside static code graph coverage. The decision graph covers the public GitHub history indexed for that scan and shows incomplete source streams. The editor drafts stay in tab memory.
 
-Neo4j stores graph metadata in the scan snapshot. Private repository access, Google and email sign-in, resume extraction, the full legacy career simulation suite, and legacy data migrations remain follow-up work. Keep the inherited inventory as a roadmap and confirm environment and provider choices before enabling those features.
+Neo4j stores the scan snapshot and its durable decision graph. Private repository access, Google and email sign-in, resume extraction, the full legacy career simulation suite, and legacy data migrations remain follow-up work. Keep the inherited inventory as a roadmap and confirm environment and provider choices before enabling those features.
 
 ## Judges’ demo
 

@@ -32,11 +32,11 @@ def close():
 
 
 @contextmanager
-def transaction(*, write=False):
+def transaction(*, write=False, timeout=12):
     mode = WRITE_ACCESS if write else READ_ACCESS
     with (
         driver().session(database=config.NEO4J_DATABASE, default_access_mode=mode) as session,
-        session.begin_transaction(timeout=12) as tx,
+        session.begin_transaction(timeout=timeout) as tx,
     ):
         yield tx
         tx.commit()
