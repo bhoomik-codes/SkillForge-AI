@@ -23,6 +23,7 @@ os.environ["JUDGE_TOKEN"] = ""
 from skillforge import config, knowledge, sarvam, trail_answer
 from skillforge.db import close, now, provision, session, transaction
 from skillforge.decision_context import explain
+from skillforge.demo import DEMO_OWNER, DEMO_SCAN, ensure_demo
 from skillforge.judge import matches
 from skillforge.main import app
 from skillforge.migrate import migrate
@@ -475,3 +476,44 @@ class KnowledgeGraphTests(unittest.TestCase):
                 result = client.post("/api/transcribe", content=b"audio fixture",
                                      headers={**ORIGIN, "Content-Type": "audio/webm"})
             self.assertEqual(result.raise_for_status().json(), {"text": "Why did the dock change?"})
+
+
+
+class SharedDemoTests(unittest.TestCase):
+    def test_shared_graph_is_readable_across_guest_sessions_and_write_protected(self):
+        ensure_demo()
+        ensure_demo()
+        job, lease = claim()
+        self.assertEqual(job["id"], DEMO_SCAN)
+        records = [knowledge.numbered({"number": 31, "title": "Dock contrast",
+                    "body": "We chose a lighter dock label to avoid low contrast."}, "pr", "appfuton/futon")]
+        try:
+            knowledge.store_graph(DEMO_SCAN, lease, READER["revision"], records, [], [])
+            with TestClient(app) as first, TestClient(app) as second:
+                first.get("/api/session").raise_for_status()
+                second.get("/api/session").raise_for_status()
+                url = f"/api/scans/{DEMO_SCAN}"
+                self.assertEqual(first.get(url).json()["id"], DEMO_SCAN)
+                self.assertEqual(second.get(url + "/knowledge").json()["records"], 1)
+                self.assertEqual(first.get("/api/scans").json(), [])
+                first.delete(url, headers=ORIGIN).raise_for_status()
+                self.assertEqual(first.post(url + "/rubric", headers=ORIGIN, json={}).status_code, 404)
+                first.delete("/api/account", headers=ORIGIN).raise_for_status()
+                result = second.post(url + "/knowledge/ask", json={"question": "Why change dock contrast?"},
+                                     headers=ORIGIN).raise_for_status().json()
+                self.assertEqual(result["evidence"][0]["record"], "pr:31")
+                self.assertIn("SF_HAS_EVIDENCE", result["graph"]["queries"][0]["cypher"])
+        finally:
+            with transaction(write=True) as tx:
+                knowledge.remove_graph(tx, DEMO_SCAN)
+                tx.run("MATCH (s:SFScan {id: $id, owner: $owner}) DELETE s", id=DEMO_SCAN, owner=DEMO_OWNER).consume()
+
+    def test_an_override_requires_added_and_removed_key_on_the_same_branch_and_path(self):
+        pulls = [{"number": 112, "merged_at": "2026-09-19", "base": {"ref": "devel"}},
+                 {"number": 146, "merged_at": "2026-11-19", "base": {"ref": "devel"}}]
+        changes = {112: [{"filename": "prefs.xml", "patch": '+ android:key="old"'}],
+                   146: [{"filename": "prefs.xml", "patch": '- android:key="old"\n+ android:key="new"'}]}
+        link = knowledge.preference_overrides(pulls, changes, "appfuton/futon")[0]
+        self.assertEqual((link["source"], link["target"], link["kind"]), ("pr:146", "pr:112", "SUPERSEDES"))
+        pulls[1]["base"]["ref"] = "other"
+        self.assertEqual(knowledge.preference_overrides(pulls, changes, "appfuton/futon"), [])

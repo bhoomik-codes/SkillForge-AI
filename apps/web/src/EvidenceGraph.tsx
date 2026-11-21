@@ -7,7 +7,7 @@ import type { RecordLink, RecordNode, Trail } from './DecisionChat'
 const edgeLabels: Record<string, string> = {
   HAS_COMMENT: 'Has comment', REFERENCES: 'References', DECLARES_FIX: 'Declares a fix',
   REPORTS_REGRESSION_FROM: 'Reports regression from', MERGED_AS: 'Merged as', CLOSED: 'Closed',
-  CHANGES_FILE: 'Changed file', ASSOCIATED_WITH: 'Associated PR', CROSS_REFERENCED: 'Cross-referenced',
+  SUPERSEDES: 'Supersedes', CHANGES_FILE: 'Changed file', ASSOCIATED_WITH: 'Associated PR', CROSS_REFERENCED: 'Cross-referenced',
 }
 
 const kindColors: Record<string, string> = { pr: '#b4e078', issue: '#f1b578', commit: '#8eb6ec', discussion: '#cfb0ed' }

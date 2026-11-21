@@ -3,7 +3,7 @@
 import asyncio
 import json
 import re
-from collections import Counter
+from textwrap import dedent
 from time import monotonic
 
 import httpx
@@ -11,6 +11,7 @@ import httpx
 from . import config, github
 from .db import transaction
 from .decision_context import STOP, words
+from .demo import DEMO_PREFERENCE_PRS, DEMO_REPO
 
 PAGE_SIZE = 50
 PAGE_LIMIT = config.HISTORY_PAGE_LIMIT
@@ -176,6 +177,35 @@ def relationships(repo, records, pulls, events):
     return list(edges.values())
 
 
+ANDROID_KEY = re.compile(r'^[+-]\s*android:key="([^"]+)"')
+
+
+def preference_overrides(prs, changes, repo):
+    """Link verified additions and later removals of the same preference on the same branch."""
+    added = {}
+    edges = []
+    for pr in sorted(prs, key=lambda item: item.get("merged_at") or ""):
+        if not pr.get("merged_at"):
+            continue
+        number = pr["number"]
+        for file in changes.get(number, []):
+            before, after = set(), set()
+            for line in file.get("patch", "").splitlines():
+                if match := ANDROID_KEY.match(line):
+                    (after if line[0] == "+" else before).add(match[1])
+            for key in sorted(before - after):
+                identity = (pr["base"]["ref"], file["filename"], key)
+                if previous := added.pop(identity, None):
+                    edges.append({
+                        "source": f"pr:{number}", "target": f"pr:{previous}", "kind": "SUPERSEDES",
+                        "evidence": f"PR #{previous} added {key} in {file['filename']}. PR #{number} removed it.",
+                        "url": f"https://github.com/{repo}/pull/{number}/files",
+                    })
+            for key in after - before:
+                added[(pr["base"]["ref"], file["filename"], key)] = number
+    return edges
+
+
 async def fetch_graph(http, repo, revision, info):
     endpoint = f"/repos/{repo}"
     topics = ("issues", "pullRequests", "commits", "comments", "reviewComments", "events", "discussions")
@@ -214,6 +244,11 @@ async def fetch_graph(http, repo, revision, info):
         raise github.GitHubError("GitHub history could not be indexed. Try importing the repository again.")
     nodes = list(records.values())
     edges = relationships(repo, nodes, pulls, events)
+    if repo == DEMO_REPO:
+        diffs = await asyncio.gather(*(pages(http, f"{endpoint}/pulls/{number}/files")
+                                       for number in DEMO_PREFERENCE_PRS))
+        changes = {number: result[0] for number, result in zip(DEMO_PREFERENCE_PRS, diffs, strict=True)}
+        edges.extend(preference_overrides(pulls, changes, repo))
     gaps = [topic for topic, result in zip(topics, results, strict=True) if not result[1]]
     if len(edges) > 30_000:
         gaps.append("relationships")
@@ -269,12 +304,7 @@ def graph_status(owner, scan_id):
     return row.data() if row else None
 
 
-def trail(owner, scan_id, question, path=None, anchors=()):
-    terms = sorted(words(question) - STOP)[:20]
-    numbers = [int(match[4]) for match in MENTION.finditer(question)][:10]
-    path_terms = [path.lower(), path.rsplit("/", 1)[-1].lower()] if path else []
-    with transaction() as tx:
-        seeds = tx.run("""
+TRAIL_SEED_QUERY = """
             MATCH (:SFScan {owner: $owner, id: $scan})-[:SF_HAS_EVIDENCE]->(r)
             WITH r, reduce(score = 0, term IN $terms |
                  score + CASE WHEN toLower(r.title) CONTAINS term THEN 3
@@ -286,25 +316,37 @@ def trail(owner, scan_id, question, path=None, anchors=()):
                      1 + COUNT { (r)-[:SF_EVIDENCE_LINK]-() } ELSE 0 END AS score
             WHERE score > 0
             RETURN properties(r) AS node ORDER BY score DESC, r.date DESC, r.id LIMIT 5
-            """, owner=owner, scan=scan_id, terms=terms, numbers=numbers, anchors=list(anchors),
-                       paths=path_terms, overview=not question).value("node")
-        nodes = {node["id"]: node for node in seeds}
-        seen_edges = {}
-        frontier = list(nodes)
-        for _ in range(4):
-            if not frontier or len(nodes) >= RECORD_LIMIT:
-                break
-            rows = tx.run("""
+            """
+
+TRAIL_LINK_QUERY = """
                 MATCH (r:SFKnowledgeRecord {scan: $scan})-[link:SF_EVIDENCE_LINK]-
                       (related:SFKnowledgeRecord {scan: $scan})
                 WHERE r.id IN $frontier
                 RETURN properties(related) AS node, startNode(link).id AS source, endNode(link).id AS target,
                        properties(link) AS link
-                ORDER BY CASE link.kind WHEN 'CLOSED' THEN 0 WHEN 'DECLARES_FIX' THEN 1
+                ORDER BY CASE link.kind WHEN 'SUPERSEDES' THEN 0 WHEN 'CLOSED' THEN 1 WHEN 'DECLARES_FIX' THEN 1
                          WHEN 'REPORTS_REGRESSION_FROM' THEN 2 WHEN 'CROSS_REFERENCED' THEN 3
                          WHEN 'REFERENCES' THEN 4 ELSE 5 END,
                          related.date DESC LIMIT $limit
-                """, scan=scan_id, frontier=frontier, limit=EDGE_LIMIT).data()
+                """
+
+
+def trail(owner, scan_id, question, path=None, anchors=()):
+    terms = sorted(words(question) - STOP)[:20]
+    numbers = [int(match[4]) for match in MENTION.finditer(question)][:10]
+    path_terms = [path.lower(), path.rsplit("/", 1)[-1].lower()] if path else []
+    with transaction() as tx:
+        seeds = tx.run(TRAIL_SEED_QUERY, owner=owner, scan=scan_id, terms=terms, numbers=numbers, anchors=list(anchors),
+                       paths=path_terms, overview=not question).value("node")
+        nodes = {node["id"]: node for node in seeds}
+        seen_edges = {}
+        frontier = list(nodes)
+        traversals = 0
+        for _ in range(4):
+            if not frontier or len(nodes) >= RECORD_LIMIT:
+                break
+            rows = tx.run(TRAIL_LINK_QUERY, scan=scan_id, frontier=frontier, limit=EDGE_LIMIT).data()
+            traversals += 1
             frontier = []
             for row in rows:
                 node = row["node"]
@@ -314,6 +356,7 @@ def trail(owner, scan_id, question, path=None, anchors=()):
                 edge = {"source": row["source"], "target": row["target"], **row["link"]}
                 seen_edges[(edge["source"], edge["target"], edge["kind"])] = edge
     edges = [edge for edge in seen_edges.values() if edge["source"] in nodes and edge["target"] in nodes]
-    return {"nodes": list(nodes.values()), "edges": edges[:EDGE_LIMIT], "counts": dict(
-        Counter(node["kind"] for node in nodes.values()),
-    )}
+    queries = [{"label": "Find relevant records", "cypher": dedent(TRAIL_SEED_QUERY).strip(), "runs": 1}]
+    if traversals:
+        queries.append({"label": "Expand linked evidence", "cypher": dedent(TRAIL_LINK_QUERY).strip(), "runs": traversals})
+    return {"nodes": list(nodes.values()), "edges": edges[:EDGE_LIMIT], "queries": queries}

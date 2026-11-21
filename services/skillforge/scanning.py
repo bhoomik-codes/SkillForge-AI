@@ -5,6 +5,7 @@ import secrets
 
 from .analysis import structure
 from .db import encode, entity, expire_guests, now, transaction
+from .demo import ensure_demo
 from .github import GitHubError, get_snapshot, source_href
 from .knowledge import fetch_graph, store_graph
 from .scoring import quality
@@ -72,6 +73,7 @@ async def run_scans():
         try:
             if now() - last_cleanup > 60:
                 await asyncio.to_thread(expire_guests)
+                await asyncio.to_thread(ensure_demo)
                 last_cleanup = now()
             claimed = await asyncio.to_thread(claim)
             if claimed:

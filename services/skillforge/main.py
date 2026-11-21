@@ -36,6 +36,7 @@ from .db import (
     workspace_write,
 )
 from .decision_context import explain
+from .demo import DEMO_SCAN, ensure_demo, read_owner
 from .github import (
     CONTRIBUTION_LABELS,
     CONTRIBUTION_LANGUAGES,
@@ -69,6 +70,7 @@ async def lifespan(_app):
     try:
         await asyncio.to_thread(require_current_schema if config.PRODUCTION else migrate)
         if WORKER_ENABLED:
+            await asyncio.to_thread(ensure_demo)
             worker = asyncio.create_task(run_scans())
         yield
     finally:
@@ -326,7 +328,7 @@ def lookup(owner, scan_id):
 
 @app.get("/api/scans/{scan_id}")
 def scan_details(scan_id: str, request: Request):
-    return scan_view(lookup(owner_of(request), scan_id), details=True)
+    return scan_view(lookup(read_owner(owner_of(request), scan_id), scan_id), details=True)
 
 
 @app.post("/api/scans/{scan_id}/rubric")
@@ -394,7 +396,7 @@ def reserve_assistant(owner, token, voice):
 
 @app.get("/api/scans/{scan_id}/knowledge")
 def knowledge_status(scan_id: str, request: Request):
-    state = graph_status(owner_of(request), scan_id)
+    state = graph_status(read_owner(owner_of(request), scan_id), scan_id)
     if state is None:
         raise HTTPException(404, "This scan is unavailable in your workspace.")
     return state
@@ -403,6 +405,7 @@ def knowledge_status(scan_id: str, request: Request):
 @app.get("/api/scans/{scan_id}/knowledge/preview")
 def knowledge_preview(scan_id: str, request: Request):
     owner = owner_of(request)
+    owner = read_owner(owner, scan_id)
     state = graph_status(owner, scan_id)
     if state is None:
         raise HTTPException(404, "This scan is unavailable in your workspace.")
@@ -414,7 +417,8 @@ def knowledge_preview(scan_id: str, request: Request):
 @app.post("/api/scans/{scan_id}/knowledge/ask")
 async def ask_knowledge(scan_id: str, body: TrailQuestion, request: Request):
     owner = await asyncio.to_thread(owner_of, request)
-    state = await asyncio.to_thread(graph_status, owner, scan_id)
+    graph_owner = read_owner(owner, scan_id)
+    state = await asyncio.to_thread(graph_status, graph_owner, scan_id)
     if state is None:
         raise HTTPException(404, "This scan is unavailable in your workspace.")
     if not state["revision"]:
@@ -426,9 +430,11 @@ async def ask_knowledge(scan_id: str, body: TrailQuestion, request: Request):
     if path and (any(part in {"", ".", ".."} for part in path.split("/")) or chr(92) in path):
         raise HTTPException(422, "Enter a repository-relative file path.")
     await asyncio.to_thread(reserve_assistant, owner, request.cookies[config.COOKIE], False)
-    anchors, line_content = await enrich(owner, request.cookies[config.COOKIE], scan_id, state,
-                                         question, path, body.line)
-    graph = await asyncio.to_thread(trail, owner, scan_id, question + " " + line_content, path, anchors)
+    anchors, line_content = (), ""
+    if scan_id != DEMO_SCAN:
+        anchors, line_content = await enrich(owner, request.cookies[config.COOKIE], scan_id, state,
+                                             question, path, body.line)
+    graph = await asyncio.to_thread(trail, graph_owner, scan_id, question + " " + line_content, path, anchors)
     answer = await select_evidence(question, graph, body.ai)
     return {**answer, "graph": graph, "source": source_href(
         state["repo"], state["revision"], path, body.line,
@@ -487,7 +493,7 @@ async def context_for(snapshot, body):
 @app.post("/api/scans/{scan_id}/context")
 async def scan_context(scan_id: str, body: ContextQuestion, request: Request):
     owner = await asyncio.to_thread(owner_of, request)
-    row = await asyncio.to_thread(lookup, owner, scan_id)
+    row = await asyncio.to_thread(lookup, read_owner(owner, scan_id), scan_id)
     if row["state"] not in {"complete", "review"}:
         raise HTTPException(409, "Context is available after indexing.")
     return await context_for(row["result"], body)
@@ -502,7 +508,7 @@ async def sample_context(body: ContextQuestion, request: Request):
 @app.get("/api/scans/{scan_id}/source")
 async def preview(scan_id: str, path: str, request: Request):
     owner = await asyncio.to_thread(owner_of, request)
-    row = await asyncio.to_thread(lookup, owner, scan_id)
+    row = await asyncio.to_thread(lookup, read_owner(owner, scan_id), scan_id)
     result = row["result"]
     if row["state"] not in {"complete", "review"} or path not in result["preview_paths"]:
         raise HTTPException(404, "This file is outside the analyzed source sample.")

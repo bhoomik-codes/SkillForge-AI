@@ -64,3 +64,8 @@
   .decision-header { flex-direction: column; gap: .5rem; }
   .decision-header, .decision-status, .decision-thread, .decision-composer { padding: .8rem; }
 }
+
+.decision-query { padding: .55rem .75rem; border: 1px solid var(--trail-border); border-radius: 6px; }
+.decision-query summary { cursor: pointer; }
+.decision-query pre { overflow-x: auto; color: #c9e69f; font-size: .8rem; }
+.decision-demo-prompts { padding: .75rem; }

@@ -31,7 +31,6 @@ export function DecisionHistory({ snapshot, scanId, path, timeline = true }: {
 }) {
   const [query, setQuery] = useState('')
   const [through, setThrough] = useState('')
-  const [neo4j, setNeo4j] = useState(false)
   const [context, setContext] = useState<Context>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -46,7 +45,7 @@ export function DecisionHistory({ snapshot, scanId, path, timeline = true }: {
     try {
       const endpoint = scanId ? '/scans/' + scanId + '/context' : '/sample/context'
       setContext(await api<Context>(endpoint, 'POST', {
-        question: query.trim(), path, through: through || null, neo4j,
+        question: query.trim(), path, through: through || null, neo4j: true,
       }))
     } catch (error) { setError(errorText(error)) }
     finally { setBusy(false) }
@@ -95,10 +94,7 @@ export function DecisionHistory({ snapshot, scanId, path, timeline = true }: {
           required={!path} /></label>
         <button disabled={busy} className="button primary">{busy ? 'Reading history…' : 'Find evidence'}</button>
       </div>
-      <label className="history-date"><input type="checkbox" checked={neo4j} disabled={busy}
-        onChange={event => { setNeo4j(event.target.checked); setContext(undefined); setError('') }} /> Use Neo4j for this question</label>
-      {neo4j && <p>Neo4j receives public record IDs, dates, file and symbol names, GitHub handles, and their relationships
-        in a temporary transaction. The question and record text stay in SkillForge.</p>}
+
     </form>}
     {error && <p role="status">{error}</p>}
     {context && <section className="history-results" aria-label="Question evidence" aria-live="polite">
@@ -106,8 +102,7 @@ export function DecisionHistory({ snapshot, scanId, path, timeline = true }: {
         {!!context.evidence.length && <button className="button compact" onClick={exportDraft}><ArrowDown size={15} /> Export decision draft</button>}</div>
       <p>{context.mode === 'neo4j' ? 'Retrieved through Neo4j'
         : context.mode === 'fallback' ? 'Neo4j is unavailable. Retrieved through the local graph.'
-          : neo4j ? 'Neo4j is unconfigured or this snapshot has no records in range. Local graph selected.'
-            : 'Retrieved through the local graph.'} · {context.confidence} confidence</p>
+          : 'This snapshot has no records available for Neo4j traversal.'} · {context.confidence} confidence</p>
       <p>{context.answer ? <>Recorded rationale “{context.answer}” · <RecordLink item={context.evidence[0].record} /></>
         : 'The indexed history cannot establish why this decision was made.'}</p>
       {context.evidence.map(item => <article key={item.record.id}>

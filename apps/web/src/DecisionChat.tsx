@@ -13,12 +13,18 @@ export type RecordLink = { source: string; target: string; kind: string; evidenc
 export type Trail = {
   mode: 'ai' | 'retrieved' | 'abstained'
   evidence: { record: string; quote: string }[]
-  graph: { nodes: RecordNode[]; edges: RecordLink[] }
+  graph: { nodes: RecordNode[]; edges: RecordLink[]; queries: { label: string; cypher: string; runs: number }[] }
   source: string | null
 }
 type IndexStatus = {
   revision: string | null; scanState: string; records: number | null; edges: number | null; gaps: string[] | null
 }
+const FUTON_QUESTIONS = [
+  ['Trace the migration fix', 'Why did Futon need to preserve reading statistics during source migration? Trace issue #127 and PR #138.'],
+  ['Find an overridden decision', 'What did merged PR #112 decide about waiting for chapter updates, and what did PR #146 change?'],
+  ['Try an unanswered question', 'Why does Futon use Kubernetes for billing?'],
+] as const
+
 type Turn = { question: string; answer?: Trail; error?: string }
 type Anchor = { path: string; line?: number }
 
@@ -36,9 +42,28 @@ function Answer({ answer }: { answer: Trail }) {
       return node && <figure key={entry.record + index} className="decision-citation">
         <blockquote>{entry.quote}</blockquote>
         <figcaption><a href={node.url} target="_blank" rel="noreferrer">{recordLabel(node)} · {node.title} <ArrowUpRight size={13} /></a>
-          {node.author && <span> · @{node.author}</span>}</figcaption>
+          {node.author && <span> · @{node.author}</span>}
+          {node.date && <span> · <time dateTime={node.date}>{node.date.slice(0, 10)}</time></span>}</figcaption>
       </figure>
     })}
+    {answer.graph.edges.filter(edge => edge.kind === 'SUPERSEDES').map(edge => {
+      const later = answer.graph.nodes.find(node => node.id === edge.source)
+      const earlier = answer.graph.nodes.find(node => node.id === edge.target)
+      if (!later || !earlier) return null
+      return <div key={edge.source + edge.target} className="decision-inspector">
+        <strong>{recordLabel(later)} supersedes {recordLabel(earlier)}</strong>
+        <p>{edge.evidence}</p>
+        <a href={earlier.url} target="_blank" rel="noreferrer">Original PR</a>{' · '}
+        <a href={edge.url} target="_blank" rel="noreferrer">Later diff</a>
+      </div>
+    })}
+    <details className="decision-query">
+      <summary>View executed Neo4j queries</summary>
+      {answer.graph.queries.map(query => <div key={query.label}>
+        <p>{query.label} · {query.runs} {query.runs === 1 ? 'run' : 'runs'}</p>
+        <pre>{query.cypher}</pre>
+      </div>)}
+    </details>
     {answer.source && <a className="decision-source" href={answer.source} target="_blank" rel="noreferrer">Open pinned source <ArrowUpRight size={13} /></a>}
     <Suspense fallback={<p role="status">Loading the decision graph…</p>}>
       <EvidenceGraph graph={answer.graph} />
@@ -208,16 +233,6 @@ export function DecisionChat({ scanId, voice, ai, anchor, demo }: {
         <GitBranch size={31} weight="duotone" />
         <h4>What changed, and why?</h4>
         <p>Ask about a behavior, mention a PR or issue number, or attach a file and line.</p>
-        {demo && <div className="decision-demo-prompts">
-          <button className="button" onClick={() => {
-            setQuestion('Why did Futon need to preserve reading statistics during source migration? Trace issue #127 and PR #138.')
-            questionBox.current?.focus()
-          }}>Trace a migration regression</button>
-          <button className="button" onClick={() => {
-            setQuestion('What did the draft PR #142 propose for the Continue button and navigation dock?')
-            questionBox.current?.focus()
-          }}>Explore the dock proposal</button>
-        </div>}
       </div>}
       {messages.map((message, idx) => <article className="decision-turn" key={idx}>
         <div className="decision-question"><User size={17} /><p>{message.question}</p></div>
@@ -227,6 +242,12 @@ export function DecisionChat({ scanId, voice, ai, anchor, demo }: {
       </article>)}
     </div>}
     {error && <p className="decision-error" role="alert">{error}</p>}
+    {ready && demo && <div className="decision-demo-prompts">
+      {FUTON_QUESTIONS.map(([label, prompt]) => <button key={label} className="button" onClick={() => {
+        setQuestion(prompt)
+        questionBox.current?.focus()
+      }}>{label}</button>)}
+    </div>}
     <form className="decision-composer" onSubmit={send}>
       <label className="sr-only" htmlFor="decision-question">Question about this repository</label>
       <textarea id="decision-question" ref={questionBox} value={question} onChange={event => setQuestion(event.target.value)}

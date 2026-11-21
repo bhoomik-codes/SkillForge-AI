@@ -21,16 +21,17 @@ const CodeGraph = lazy(() => import('./Graph').then(module => ({ default: module
 
 type View = 'workspace' | 'rankings' | 'practice' | 'career' | 'opensource'
 type Tab = 'ask' | 'graph' | 'quality' | 'history'
-const FUTON = 'https://github.com/AppFuton/Futon'
+const DEMO_SCAN = 'demo-futon'
 
 function App() {
   const [view, setView] = useState<View>('workspace')
   const [focusRoadmap, setFocusRoadmap] = useState(false)
-  const [tab, setTab] = useState<Tab>('graph')
+  const [tab, setTab] = useState<Tab>('ask')
   const [anchor, setAnchor] = useState<{ path: string; line?: number }>()
   const [session, setSession] = useState<Session | null>(null)
   const [scans, setScans] = useState<Scan[]>([])
-  const [active, setActive] = useState<string | null>(null)
+  const [demo, setDemo] = useState<Scan>()
+  const [active, setActive] = useState<string | null>(DEMO_SCAN)
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [repo, setRepo] = useState('')
   const [consent, setConsent] = useState(false)
@@ -53,6 +54,12 @@ function App() {
         const account = await api<Session>('/session')
         const results = await api<Scan[]>('/scans')
         if (alive) { setSession(account); setScans(results) }
+        try {
+          const shared = await api<Scan>('/scans/' + DEMO_SCAN)
+          if (alive) setDemo(shared)
+        } catch {
+          if (alive) setNotice('The shared Futon demo is unavailable. You can still import a repository.')
+        }
       } catch (error) { if (alive) setNotice(errorText(error)) }
     })()
     const auth = new URLSearchParams(location.search).get('auth')
@@ -63,16 +70,18 @@ function App() {
     return () => { alive = false }
   }, [])
 
-  const shouldPoll = scans.some(pending)
+  const shouldPoll = scans.some(pending) || (demo ? pending(demo) : false)
   useEffect(() => {
     if (!shouldPoll) return
     let alive = true
     let timer: number
     async function attempt() {
       try {
-        const next = await api<Scan[]>('/scans')
-        if (alive) setScans(next)
-        if (!next.some(pending)) return
+        const [next, shared] = await Promise.all([
+          api<Scan[]>('/scans'), api<Scan>('/scans/' + DEMO_SCAN).catch(() => undefined),
+        ])
+        if (alive) { setScans(next); if (shared) setDemo(shared) }
+        if (!next.some(pending) && !(shared && pending(shared))) return
       } catch (error) {
         if (alive) setNotice(errorText(error))
       }
@@ -82,7 +91,7 @@ function App() {
     return () => { alive = false; window.clearTimeout(timer) }
   }, [shouldPoll])
 
-  const selectedRow = scans.find(item => item.id === active)
+  const selectedRow = active === DEMO_SCAN ? demo : scans.find(item => item.id === active)
   const selectedState = selectedRow?.state
   useEffect(() => {
     let alive = true
@@ -125,8 +134,8 @@ function App() {
     finally { setBusy(false) }
   }
 
-  function openScan(id: string | null, nextTab: Tab = id ? 'ask' : 'graph') {
-    setActive(id); setView('workspace'); setTab(nextTab); setPrevious(undefined); setAnchor(undefined)
+  function openScan(id: string | null, nextTab: Tab = 'ask') {
+    setActive(id ?? DEMO_SCAN); setView('workspace'); setTab(nextTab); setPrevious(undefined); setAnchor(undefined)
   }
 
   async function removeScan(id: string) {
@@ -206,20 +215,16 @@ function App() {
               <button className="button primary" disabled={busy || !session}>{busy ? 'Queuing…' : 'Build knowledge graph'} <ArrowRight size={17} /></button>
               {session?.oauth && !session.login && <a href="/api/auth/github" className="text-button">Connect GitHub</a>}
               {session?.login && <button type="button" className="text-button" onClick={() => { setPickerPage(1); setPicker(true) }}>Choose from GitHub</button>}
-              <button type="button" className="text-button" disabled={busy || !session}
-                onClick={() => {
-                  const indexed = scans.find(scan => scan.repo === 'appfuton/futon' && (scan.knowledgeReady || pending(scan)))
-                  if (indexed) openScan(indexed.id)
-                  else void importRepository(FUTON, false)
-                }}>Try Futon</button>
+              <button type="button" className="text-button" onClick={() => openScan(DEMO_SCAN)}>Try Futon</button>
             </div>
           </form>
         </section>
         <div className="workspace-grid">
           <aside className="library">
             <div className="split"><h2>Repositories</h2><button className="icon-button" aria-label="Focus repository import" onClick={() => document.getElementById('repository')?.focus()}><Plus size={17} /></button></div>
-            <button className={'library-item' + (!active ? ' active' : '')} aria-pressed={!active} onClick={() => openScan(null)}>
-              <GitBranch size={17} /><span><strong>delivery-routing</strong><small>Example repository</small></span>
+            <button className={'library-item' + (active === DEMO_SCAN ? ' active' : '')} aria-pressed={active === DEMO_SCAN}
+              onClick={() => openScan(DEMO_SCAN)}>
+              <GitBranch size={17} /><span><strong>AppFuton/Futon</strong><small>Shared demo · Public GitHub repository</small></span>
             </button>
             {scans.map(scan => <div className={'library-row' + (scan.id === active ? ' active' : '')} key={scan.id}>
               <button className="library-item" aria-pressed={scan.id === active} onClick={() => openScan(scan.id)}>
@@ -234,8 +239,8 @@ function App() {
           </aside>
           <section className="detail" aria-label="Selected repository">
             <div className="detail-heading">
-              <div><p className="eyebrow">{snapshot?.sample ? 'Example repository' : 'Repository analysis'}</p>
-                <h2>{snapshot?.repo ?? selectedRow?.repo ?? 'Repository analysis'}</h2>
+              <div><p className="eyebrow">{active === DEMO_SCAN ? 'Shared demo repository' : 'Repository analysis'}</p>
+                <h2>{snapshot?.repo ?? selectedRow?.repo ?? (active === DEMO_SCAN ? 'AppFuton/Futon' : 'Repository analysis')}</h2>
                 {snapshot?.description && <p>{snapshot.description}</p>}</div>
               {snapshot && <div className="revision"><GitBranch size={16} /> {snapshot.branch}<span>{snapshot.revision.slice(0, 7)}</span></div>}
             </div>
@@ -244,7 +249,7 @@ function App() {
             {loadError && <div className="status-panel" role="alert">{loadError}</div>}
             {summary && <div className="status-panel" role="alert"><p>{summary.error}</p>
               {summary.retryAt && <p>Try after {new Date(summary.retryAt * 1000).toLocaleTimeString()}.</p>}
-              <button className="button" onClick={() => { setRepo(selectedRow!.repo); document.getElementById('repository')?.focus() }}>Prepare another scan</button></div>}
+              {active !== DEMO_SCAN && <button className="button" onClick={() => { setRepo(selectedRow!.repo); document.getElementById('repository')?.focus() }}>Prepare another scan</button>}</div>}
             {(active || snapshot) && <div className="tabbar" role="group" aria-label="Repository views">
                 {active && <button aria-pressed={tab === 'ask'} onClick={() => setTab('ask')}><GitBranch size={17} /> Ask why</button>}
                 {snapshot && <>
@@ -253,16 +258,18 @@ function App() {
                 <button aria-pressed={tab === 'history'} onClick={() => setTab('history')}><GitBranch size={17} /> Decision history</button>
                 </>}
               </div>}
-            {active && <div hidden={tab !== 'ask'}>
+            {active && session && <div hidden={tab !== 'ask'}>
               <DecisionChat key={active} scanId={active} voice={!!session?.voice} ai={!!session?.ai}
-                anchor={anchor} demo={selectedRow?.repo === 'appfuton/futon'} />
+                anchor={anchor} demo={active === DEMO_SCAN || selectedRow?.repo === 'appfuton/futon'} />
             </div>}
             {snapshot && <>
               {tab === 'graph' && <Suspense fallback={<p className="status-panel" role="status">Loading code graph…</p>}>
                 <CodeGraph key={snapshot.repo + snapshot.revision} snapshot={snapshot} scanId={active}
                   onAsk={active ? (path, line) => { setAnchor({ path, line: line ?? undefined }); setTab('ask') } : undefined} />
               </Suspense>}
-              {tab === 'quality' && selectedState === 'review' && <RubricPreview key={active} snapshot={snapshot} onApprove={approveRubric} />}
+              {tab === 'quality' && selectedState === 'review' && active !== DEMO_SCAN && <RubricPreview key={active} snapshot={snapshot} onApprove={approveRubric} />}
+              {tab === 'quality' && selectedState === 'review' && active === DEMO_SCAN &&
+                <p className="status-panel">Import your own repository to publish and compare a quality score.</p>}
               {tab === 'quality' && selectedState !== 'review' && <Scorecard key={active ?? 'sample'} scanId={active} snapshot={snapshot} comparable={comparable} previous={previous} onCompare={setPrevious}
                 onPractice={id => { setPracticeFocus(id); setView('practice'); window.scrollTo(0, 0) }} />}
               {tab === 'history' && <DecisionHistory key={active ?? 'sample'} snapshot={snapshot} scanId={active} />}

@@ -16,7 +16,9 @@ SENTENCES = re.compile(r"\n+|(?<=[.!?])\s+")
 
 
 def candidates(question, graph):
-    terms = words(question) - {"change", "changed", "made", "work", "does", "behavior", "particular"}
+    repo_names = {name for node in graph["nodes"] for name in words(node.get("repo", "").rsplit("/", 1)[-1])}
+    terms = words(question) - repo_names - {"change", "changed", "made", "work", "use", "used",
+                                           "does", "behavior", "particular"}
     requires_reason = bool(RATIONALE.search(question))
     minimum_overlap = min(2, len(terms)) or 1
     result = []

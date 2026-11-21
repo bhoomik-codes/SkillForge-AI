@@ -130,12 +130,12 @@ export function Practice({ enabled, initialProblem }: { enabled: boolean; initia
           <textarea className="solution" value={code} spellCheck={false} autoCapitalize="off" autoCorrect="off" aria-label="Solution source code"
             maxLength={24000} onChange={event => setDrafts(current => ({ ...current, [draftKey]: event.target.value }))} />
           <div className="inline-buttons">
-            <button className="button" onClick={() => void run(true)} disabled={!enabled || !!busy || !code.trim()}><Play size={16} /> Run examples</button>
-            <button className="button primary" onClick={() => void run(false)} disabled={!enabled || !!busy || !code.trim()}><ArrowRight size={16} /> Submit solution</button>
+            {enabled && <><button className="button" onClick={() => void run(true)} disabled={!!busy || !code.trim()}><Play size={16} /> Run examples</button>
+            <button className="button primary" onClick={() => void run(false)} disabled={!!busy || !code.trim()}><ArrowRight size={16} /> Submit solution</button></>}
             <button className="text-button" disabled={!!busy} onClick={() => setDrafts(current => ({ ...current, [draftKey]: starters[language] }))}>Reset starter</button>
           </div>
           {busy && <p className="subtle" role="status">Evaluating {busy === 'example' ? 'examples' : 'your submission'}…</p>}
-          {!enabled && <p className="subtle" role="status">The exercise catalog is available. Code execution requires a connected isolated evaluator.</p>}
+          {!enabled && <p className="subtle" role="status">Explore the exercise, check the examples, and draft a solution here.</p>}
         </section>
         </div>
         {output && <section className="panel challenge results" aria-live="polite">
