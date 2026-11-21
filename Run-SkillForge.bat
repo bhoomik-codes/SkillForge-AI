@@ -15,7 +15,13 @@ set "UV_ENV_FILE="
 set "UV_NO_ENV_FILE="
 set "PYTHONUNBUFFERED=1"
 echo Preparing SkillForge's Python environment...
-if exist ".env.local" (
+if exist ".env" (
+    if exist ".env.local" (
+        uv.exe run --directory services --locked --no-dev --python 3.12 --env-file "%CD%\.env" --env-file "%CD%\.env.local" python -u "%CD%\scripts\run_local.py" %*
+    ) else (
+        uv.exe run --directory services --locked --no-dev --python 3.12 --env-file "%CD%\.env" python -u "%CD%\scripts\run_local.py" %*
+    )
+) else if exist ".env.local" (
     uv.exe run --directory services --locked --no-dev --python 3.12 --env-file "%CD%\.env.local" python -u "%CD%\scripts\run_local.py" %*
 ) else (
     uv.exe run --directory services --locked --no-dev --python 3.12 --no-env-file python -u "%CD%\scripts\run_local.py" %*

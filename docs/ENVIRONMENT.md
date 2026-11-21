@@ -14,6 +14,8 @@ Use an ignored local environment file or the staging secret store for live integ
 | `GITHUB_API_TIMEOUT_SECONDS`, `MAX_INDEXED_FILES`, `MAX_SOURCE_FILES`, `MAX_SOURCE_BYTES`, `MAX_SOURCE_TOTAL_BYTES` | Non-secret import settings. Keep validation bounds and conservative defaults. |
 | GitHub picker and optional private access | Define the configured connection scopes and callback in milestone 2. If private access is approved later, use a scoped GitHub App and store its signing key and webhook secret in the deployer's secret store. |
 | Assessment evaluator | Define the service settings in milestone 3. Keep evaluator dispatch credentials and assessment data in the control plane with per-job inputs supplied to the isolated runtime. |
+| `SARVAM_API_KEY` | Optional server-side Sarvam key. Enables voice dictation using the Saaras speech-to-text API. The local launcher reads `.env` and applies any overrides from `.env.local`. In production add this variable to the SkillForge service. |
+| `HISTORY_PAGE_LIMIT` | Maximum GitHub history pages fetched per stream on import. Default 20, allowed range 1 to 50. The workspace displays partial coverage when the import reaches a bound or provider limit. |
 | `GEMINI_API_KEY`, `GEMINI_MODEL`, `AI_PROVIDER` | Optional SkillForge server-side provider settings. Use deterministic AI in fixture runs and when unavailable. Confirm supported models when staging is configured. Browser BYOK uses tab memory and requires no server env value. |
 | `JWT_SECRET`, `SKILLFORGE_DB_FILE`, `CLIENT_ORIGIN`, `VITE_API_BASE_URL` | Legacy SkillForge settings. Review their behavior during the baseline. The planned driver, session stack, Neo4j persistence and relative same-origin API replace these application settings. |
 

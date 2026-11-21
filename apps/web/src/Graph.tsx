@@ -25,7 +25,9 @@ function relationLabel(edge: DrawnEdge) {
     : edge.kind === 'defines' ? 'Defines' : edge.kind
 }
 
-export function CodeGraph({ snapshot, scanId }: { snapshot: Snapshot; scanId: string | null }) {
+export function CodeGraph({ snapshot, scanId, onAsk }: {
+  snapshot: Snapshot; scanId: string | null; onAsk?: (path: string, line: number | null) => void
+}) {
   const container = useRef<HTMLDivElement>(null)
   const graph = useRef<Core | null>(null)
   const canvasTitle = useRef<HTMLHeadingElement>(null)
@@ -275,6 +277,8 @@ export function CodeGraph({ snapshot, scanId }: { snapshot: Snapshot; scanId: st
         {selected.path && <p className="mono word-wrap">{selected.path}</p>}
         {sourceAvailable(selected, snapshot) && <button className="button compact" onClick={() => void showSource(selected.path!, selected.line)}>
           <Code size={16} /> Open source</button>}
+        {onAsk && selected.path && selected.kind !== 'folder' && <button className="button compact"
+          onClick={() => onAsk(selected.path!, selected.line)}>Ask why</button>}
         {connectionList('Incoming', focused.relevant.filter(edge => edge.target === selected.id), true)}
         {connectionList('Outgoing', focused.relevant.filter(edge => edge.source === selected.id && edge.target !== selected.id), false)}
       </aside>}

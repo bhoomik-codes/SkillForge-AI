@@ -24,6 +24,12 @@ Ship one React and TypeScript application with one same-origin FastAPI API, scal
 | 5. Complete inventory | Deliver Mission Control, analytics and radar, interview practice, Career Twin and trajectories, War Room, What-If, guided sprint, coach, notifications and settings. Consolidate overlapping pages. Evaluate opt-in private GitHub access with scoped installation permissions and a separate release gate. | Every inventory row has a mapped destination and an acceptance check. Remaining behavior changes have a documented decision. |
 | 6. Release candidate | Accessibility and browser review, load and failure drills, security and dependency review, safe data import where needed, privacy and retention setup, backups and restore, rollback and pilot. | Release gates below pass on a staging build. Record release owner, alert responsibilities and go/no-go before production rollout. |
 
+## R4 repository decision graph
+
+The import worker pins a revision, indexes paginated GitHub metadata, and writes its records and typed relationships to Neo4j before starting static analysis. Queries start from matching evidence and traverse up to four hops within the authorized scan. A file anchor can add revision-pinned commit history and related PRs. An explicit issue or PR number can add GitHub timeline evidence on demand. Gemini may select exact retrieved passages after consent. The chatbot can abstain while the graph still shows verified links.
+
+The Futon demo traces issue #127 through PR #138 to PR #137. The dock question uses draft PR #142 and identifies it as a proposal. The workspace shows which history streams were incomplete.
+
 ## PS T1.1 pilot walkthrough
 
 1. In **Open Source**, select a language and either **Good first issue** or **Help wanted**. Open a GitHub issue to review its scope or use **Explore repository in SkillForge** to prefill import.

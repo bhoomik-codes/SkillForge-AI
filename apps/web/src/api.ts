@@ -1,5 +1,5 @@
 
-export type Session = { login: string | null; oauth: boolean; ai: boolean; judge: boolean }
+export type Session = { login: string | null; oauth: boolean; ai: boolean; judge: boolean; voice?: boolean }
 export type Node = { id: string; label: string; kind: string; path: string | null; line: number | null }
 export type Edge = { source: string; target: string; kind: string; path: string; line: number | null }
 export type Citation = { title: string; detail: string; path: string | null; line: number | null; url: string | null }
@@ -23,7 +23,7 @@ export type Snapshot = {
 }
 export type Scan = {
   id: string; repo: string; state: 'queued' | 'running' | 'review' | 'complete' | 'failed'; created: number; updated: number
-  revision?: string; summary?: ScoreSummary; result?: Snapshot | { error: string; retryAt?: number }
+  revision?: string; knowledgeReady?: boolean; summary?: ScoreSummary; result?: Snapshot | { error: string; retryAt?: number }
 }
 export type Repository = { name: string; description: string | null; language: string | null }
 export type Source = { path: string; source: string; url: string | null }

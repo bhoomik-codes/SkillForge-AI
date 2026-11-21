@@ -57,6 +57,26 @@ The implementation covers public GitHub import and opt-in connected selection, b
 
 Neo4j stores graph metadata in the scan snapshot. Private repository access, Google and email sign-in, resume extraction, the full legacy career simulation suite, and legacy data migrations remain follow-up work. Keep the inherited inventory as a roadmap and confirm environment and provider choices before enabling those features.
 
+## Judges’ demo
+
+1. Start SkillForge and choose **Try Futon** or paste `https://github.com/AppFuton/Futon`. Wait for **Stored in Neo4j** in **Ask why**.
+2. Select **Trace a migration regression**. The answer should connect issue #127 to PR #138 and its reference to PR #137. Click the graph edges and open the GitHub evidence.
+3. Select **Explore the dock proposal** in a fresh Futon chat for the draft UI change in PR #142. Its draft status is visible in the trail.
+4. Set `SARVAM_API_KEY` before starting the app to demonstrate **Dictate with Sarvam**. Dictate, stop, review the transcript, and press **Ask**. Set `GEMINI_API_KEY` and `GEMINI_MODEL` to demonstrate model-assisted evidence selection after consent. Add a `GITHUB_API_TOKEN` authorized for public Discussions to include those in the graph.
+
+To show the persisted graph in Neo4j Browser, run:
+
+```cypher
+MATCH (s:SFScan {repo: 'appfuton/futon'})
+WHERE s.knowledgeRevision IS NOT NULL
+WITH s ORDER BY s.created DESC LIMIT 1
+MATCH (s)-[:SF_HAS_EVIDENCE]->(a:SFKnowledgeRecord)-[link:SF_EVIDENCE_LINK]->(b:SFKnowledgeRecord)
+WHERE a.number IN [127, 137, 138, 142] OR b.number IN [127, 137, 138, 142]
+RETURN a, link, b LIMIT 60
+```
+
+The import is a snapshot. A new import refreshes GitHub history. Owner deletion removes the scan and its evidence. Sarvam receives a short audio clip and returns editable text. The backend keeps the recording in memory for the request.
+
 ## Service tests
 
 Start a disposable Neo4j instance bound to loopback port 17687, then run the API suite. The tests create and remove synthetic SkillForge data on that instance.

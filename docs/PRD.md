@@ -6,11 +6,10 @@ SkillForge Integrated helps students, developers, and working professionals eval
 
 ## Primary journey
 
-1. Paste a GitHub repository URL or connect GitHub and pick one or more repositories. Review what the app can access and start an analysis.
-2. Review the project rubric, then open a 1,000-point scorecard and rankings for comparable repositories. Inspect the criteria, cited findings, amount of code analyzed, limitations, and fixes with the largest expected impact. Re-score a new commit and compare it with the previous revision.
-3. Open the code structure graph to see how files communicate through imports and calls. Select a file or function to inspect incoming and outgoing connections and jump to the linked source. Open decision history when it explains a connection or quality finding. Practice the underlying skill through a scenario such as reconciling stock updates or calculating peak support coverage from overlapping shifts.
-4. Submit code against a clear input/output contract. See sample test feedback, hidden test categories, execution limits, and an explanation after submission. Review your results alongside the repository scorecard.
-5. Optionally set a target role or paste a job description, attach evaluated evidence to your portfolio, review suggested actions, and export a career-readiness report.
+1. Paste a public GitHub repository URL or choose a repository after connecting GitHub.
+2. Index the repository history and persist the knowledge graph in Neo4j. Show the indexed revision, record and link counts, and coverage gaps.
+3. Ask why a behavior exists, cite a PR or issue number, or attach a file and line. Type the question or dictate it with Sarvam and review the transcript.
+4. Read source-linked evidence selected from the retrieved trail. Inspect multi-hop connections such as an original issue, its fix, a reported regression, and the follow-up PR. Review the code structure, scorecard, or practice exercises from secondary views.
 
 ## Requirements and acceptance
 

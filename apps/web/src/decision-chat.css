@@ -1,0 +1,66 @@
+.decision-workspace {
+  --trail-panel: #18221b;
+  --trail-border: #37443a;
+  --trail-text: #edf2eb;
+  --trail-muted: #b3c0b4;
+  border: 1px solid var(--trail-border);
+  border-radius: 12px;
+  background: #111912;
+  color: var(--trail-text);
+  min-width: 0;
+  overflow: hidden;
+}
+.decision-header, .decision-status, .decision-composer {
+  padding: 1rem 1.25rem;
+}
+.decision-header { display: flex; justify-content: space-between; gap: 1rem; align-items: start; background: var(--trail-panel); }
+.decision-header h3, .decision-empty h4 { margin: 0; color: var(--trail-text); }
+.decision-header h3 { font-size: 1.35rem; }
+.decision-header p, .decision-empty p { margin: .25rem 0 0; color: var(--trail-muted); }
+.decision-index { white-space: nowrap; display: inline-flex; align-items: center; gap: .35rem; color: #c9e69f; font-size: .8rem; }
+.decision-status { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin: 0; color: var(--trail-muted); border-block: 1px solid var(--trail-border); font-size: .82rem; }
+.decision-status-link { background: none; border: 0; padding: 0; color: #c9e69f;
+  text-decoration: underline; cursor: pointer; font: inherit; }
+.decision-preview { padding: .85rem 1.25rem 0; }
+.decision-demo-prompts { display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem; }
+.decision-status small { color: #f1b578; }
+.decision-thread { display: grid; gap: 1.25rem; padding: 1.25rem; }
+.decision-empty { display: grid; gap: .55rem; justify-items: center; align-content: center; text-align: center; min-height: 10rem; color: #c9e69f; }
+.decision-empty .button { margin-top: .45rem; }
+.decision-turn { display: grid; gap: .8rem; min-width: 0; }
+.decision-question { background: #28392b; border: 1px solid #435843; border-radius: 8px; padding: .65rem .8rem; display: flex; gap: .6rem; align-items: baseline; justify-self: end; max-width: 90%; overflow-wrap: anywhere; }
+.decision-question p, .decision-answer p, .decision-wait { margin: 0; }
+.decision-answer { display: grid; gap: .7rem; min-width: 0; }
+.decision-answer a, .decision-inspector a { color: #c9e69f; text-decoration: underline; text-underline-offset: .18em; }
+.decision-citation { margin: 0; padding: .65rem .9rem; border-left: 2px solid #a5cd71; background: var(--trail-panel); }
+.decision-citation blockquote { margin: 0 0 .35rem; overflow-wrap: anywhere; }
+.decision-citation figcaption, .decision-source, .decision-wait { color: var(--trail-muted); font-size: .85rem; }
+.decision-trail, .decision-trail-list { border: 1px solid var(--trail-border); border-radius: 6px; overflow: hidden; }
+.decision-trail summary, .decision-trail-list summary { cursor: pointer; padding: .65rem .85rem; background: var(--trail-panel); }
+.decision-trail summary svg { vertical-align: middle; margin-right: .3rem; }
+.decision-trail summary span { color: var(--trail-muted); margin-left: .55rem; font-size: .8rem; }
+.decision-canvas { height: clamp(275px, 36vw, 410px); background: radial-gradient(#394840 1px, transparent 1px) 0 0 / 18px 18px; }
+.decision-inspector { padding: .65rem .85rem; border-top: 1px solid var(--trail-border); overflow-wrap: anywhere; }
+.decision-inspector p { margin: .35rem 0; color: var(--trail-muted); }
+.decision-trail-list { margin: .65rem; }
+.decision-trail-list ul { display: grid; gap: .45rem; padding-right: 1rem; overflow-wrap: anywhere; }
+.decision-trail-list small { display: block; color: var(--trail-muted); }
+.decision-composer { display: grid; gap: .65rem; background: var(--trail-panel); border-top: 1px solid var(--trail-border); }
+.decision-composer textarea, .decision-composer input:not([type=checkbox]) {
+  width: 100%; background: #101612; color: var(--trail-text);
+  border: 1px solid #647266; border-radius: 5px; padding: .6rem .7rem; font: inherit;
+}
+.decision-composer textarea { resize: vertical; }
+.decision-composer textarea::placeholder, .decision-composer input::placeholder { color: #a1ada2; }
+.decision-composer .button { white-space: normal; }
+.decision-anchor summary, .decision-consent, .decision-composer small { color: var(--trail-muted); font-size: .8rem; }
+.decision-anchor summary { cursor: pointer; }
+.decision-anchor label { display: inline-grid; gap: .25rem; margin: .4rem .5rem 0 0; }
+.decision-compose-actions, .decision-compose-actions > div { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.decision-compose-actions { justify-content: space-between; }
+.decision-compose-actions > div { margin-inline-start: auto; }
+.decision-error { padding: 0 1.25rem; color: #ffc1a5; }
+@media (max-width: 650px) {
+  .decision-header { flex-direction: column; gap: .5rem; }
+  .decision-header, .decision-status, .decision-thread, .decision-composer { padding: .8rem; }
+}
