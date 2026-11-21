@@ -48,8 +48,19 @@ For other production deployments:
 3. Deploy a worker using the same image and `python -m skillforge.worker` as its command. Start with one worker to limit shared GitHub quota. Scale after measuring queue age, throttling and upstream calls. Set `SCAN_WORKER_ENABLED=false` on the API when deploying a separate worker.
 4. Configure separate GitHub OAuth credentials and the callback `/api/auth/github/callback` using the staging origin. The picker lists public repos owned by the connected account, and the service discards the OAuth token after profile lookup. An optional separate read-only API token raises public scan quotas.
 5. Configure the judge on its own isolated Linux worker before enabling assessed submissions. Require private networking or authenticated TLS for the API-to-judge link. Keep cloud credentials, data volumes and database routes away from the evaluator host. Pre-pull vetted Python and Node images by digest and install an isolated container runtime such as gVisor. Use `python -m uvicorn skillforge.judge:app` on the judge host, with the Docker CLI available and a high-entropy service token. Pin its images with `JUDGE_PYTHON_IMAGE` and `JUDGE_JAVASCRIPT_IMAGE`. Point the web API at the judge using `JUDGE_URL` and the same `JUDGE_TOKEN`. Keep the judge service off public ingress.
-6. If enabling optional Gemini findings, configure a supported model and a server-side key. A scan sends its bounded source excerpts only when the user opts in. The adaptive score remains based on measured checks. Deploy the API and evaluator with the same problem catalog version.
+6. If enabling optional Gemini findings, configure a supported model and a server-side key. A scan sends bounded source excerpts and recent public commit messages only when the user opts in. The adaptive score remains based on measured checks. Deploy the API and evaluator with the same problem catalog version.
 7. Verify GitHub OAuth, live scans, source references, durable recovery, Neo4j restore, provider timeouts, and the evaluator's limits and isolation before public rollout. Use separate staging data and values. Rebuild from an earlier image to roll back code only when the running schema supports it.
+
+## Neo4j commit history
+
+The opt-in Gemini review checks Neo4j for up to five public commit messages per file
+across up to four paths at the pinned revision. A cache miss or Neo4j query error falls
+back to GitHub. If GitHub history is also unavailable, Gemini can still review current code.
+
+The worker uses the same Neo4j driver and database as the rest of SkillForge. Run
+`python -m skillforge.migrate` to add the cache's uniqueness constraints. The cache holds
+public repository paths, revision and commit IDs, and bounded commit messages. Workspace
+access and deletion rules apply to the scorecard and its citations.
 
 ## Current release boundary
 

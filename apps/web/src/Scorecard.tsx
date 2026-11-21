@@ -153,6 +153,19 @@ export function Scorecard({ snapshot, scanId, previous, comparable, onCompare, o
       <h3><Sparkle size={19} /> Optional Gemini review</h3>
       {snapshot.review.mode === 'unavailable' && <p>Gemini was unavailable. The static report is ready.</p>}
       {snapshot.review.mode === 'reviewed' && !snapshot.review.findings.length && <p>No cited additional findings returned.</p>}
+      {Object.keys(snapshot.review.historySources ?? {}).length > 0 && <details>
+        <summary>Commit history coverage</summary>
+        <ul>{Object.entries(snapshot.review.historySources ?? {}).map(([path, source]) => <li key={path}>
+          {path} · {source === 'neo4j' ? 'Neo4j' : source === 'github' ? 'GitHub' : 'Unavailable'}
+        </li>)}</ul>
+      </details>}
+      {snapshot.review.decisions?.map((item, index) => <article key={'decision-' + index}>
+        <div className="finding-icon"><Sparkle size={19} /></div><div><h4>{item.title}</h4><p>{item.detail}</p>
+        <blockquote>{item.commit.quote}</blockquote>
+        <a href={item.commit.url} target="_blank" rel="noreferrer">Commit {item.commit.sha.slice(0, 7)}</a>
+        {item.url && <p><a href={item.url} target="_blank" rel="noreferrer">Current code · {item.path}:{item.line}</a></p>}
+        </div>
+      </article>)}
       {snapshot.review.findings.map((item, index) => <article key={index}>
         <div className="finding-icon"><Sparkle size={19} /></div><div><h4>{item.title}</h4><p>{item.detail}</p>
         {item.url && <a href={item.url} target="_blank" rel="noreferrer">{item.path}:{item.line} <ArrowUpRight size={14} /></a>}</div>

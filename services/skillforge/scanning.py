@@ -88,7 +88,9 @@ async def perform(scan, lease):
             payload = await asyncio.to_thread(compile_snapshot, snapshot)
             if scan["options"].get("ai"):
                 from .review import review
-                payload["review"] = await review(snapshot, payload["quality"])
+                payload["review"] = await review(
+                    snapshot, payload["quality"], include_history=scan["options"].get("history", False),
+                )
         await asyncio.to_thread(finish, scan["id"], lease, "review", payload)
     except GitHubError as exc:
         await asyncio.to_thread(finish, scan["id"], lease, "failed", {"error": str(exc), "retryAt": exc.retry_at})

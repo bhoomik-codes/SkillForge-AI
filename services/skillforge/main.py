@@ -234,6 +234,7 @@ async def list_github(request: Request, page: int = 1):
 class ImportRequest(BaseModel):
     repository: str = Field(min_length=3, max_length=280)
     ai: bool = False
+    history: bool = False
 
 
 class RubricApproval(BaseModel):
@@ -278,13 +279,15 @@ def start_scan(body: ImportRequest, request: Request):
         raise HTTPException(422, str(exc)) from exc
     if body.ai and not ai_enabled():
         raise HTTPException(409, "AI review is unavailable. Start a static review instead.")
+    history = body.ai and body.history
     with workspace_write(owner, request.cookies[config.COOKIE]) as tx:
         timestamp = now()
         active = entities(tx, """
             MATCH (s:SFScan {owner: $owner}) WHERE s.state IN ['queued', 'running']
             RETURN s AS node LIMIT 4
             """, owner=owner)
-        existing = next((row for row in active if row["repo"] == repository and row["options"]["ai"] == body.ai), None)
+        existing = next((row for row in active if row["repo"] == repository and row["options"]["ai"] == body.ai
+                         and row["options"].get("history", False) == history), None)
         if existing:
             return scan_view(existing)
         recent = tx.run("""
@@ -294,7 +297,7 @@ def start_scan(body: ImportRequest, request: Request):
         if len(active) >= 3 or recent >= 12:
             raise HTTPException(429, "This workspace has reached its scan limit. Try again later.")
         row = {"id": str(uuid4()), "repo": repository, "owner": owner, "state": "queued",
-               "created": timestamp, "updated": timestamp, "options": {"ai": body.ai}, "result": None}
+               "created": timestamp, "updated": timestamp, "options": {"ai": body.ai, "history": history}, "result": None}
         tx.run("CREATE (s:SFScan) SET s = $row", row={**row, "options": encode(row["options"])}).consume()
     return scan_view(row)
 

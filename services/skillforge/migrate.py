@@ -11,6 +11,8 @@ CONSTRAINTS = {
     "sf_attempt_id": ("SFAttempt", "id"),
     "sf_profile_owner": ("SFProfile", "owner"),
     "sf_store_id": ("SFStore", "id"),
+    "sf_public_history_key": ("SkillForgePublicHistory", "key"),
+    "sf_public_commit_key": ("SkillForgePublicCommit", "key"),
 }
 INDEXES = {
     "sf_session_owner": ("SFSession", "owner"),

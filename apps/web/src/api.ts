@@ -19,7 +19,9 @@ export type Snapshot = {
   history: { id: number | string; label?: string; title: string; body: string; date: string | null; url?: string; actor?: string }[]
   history_available: boolean
   preview_paths: string[]
-  review?: { mode: 'reviewed' | 'unavailable'; model?: string; findings: Citation[]; context?: Citation[] }
+  review?: { mode: 'reviewed' | 'unavailable'; model?: string; findings: Citation[]; context?: Citation[]
+    decisions?: (Citation & { commit: { sha: string; quote: string; url: string } })[]
+    historySources?: Record<string, 'neo4j' | 'github' | 'unavailable'> }
 }
 export type Scan = {
   id: string; repo: string; state: 'queued' | 'running' | 'review' | 'complete' | 'failed'; created: number; updated: number

@@ -110,7 +110,7 @@ function App() {
     setNotice('')
     setBusy(true)
     try {
-      const scan = await api<Scan>('/scans', 'POST', { repository: repo, ai: consent })
+      const scan = await api<Scan>('/scans', 'POST', { repository: repo, ai: consent, history: consent })
       setScans(current => [scan, ...current.filter(row => row.id !== scan.id)])
       openScan(scan.id)
       setRepo('')
@@ -195,7 +195,7 @@ function App() {
             <div className="input-line"><GithubLogo size={19} /><input id="repository" autoComplete="off" value={repo} maxLength={280}
               onChange={event => setRepo(event.target.value)} placeholder="github.com/owner/repository" required /></div>
             {session?.ai && <label className="checkbox"><input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} />
-              <span>Send up to six public source excerpts to Gemini for optional review.</span></label>}
+              <span>Send up to six public code excerpts and recent commit messages to Gemini for optional review. Public commit history may be cached in Neo4j.</span></label>}
             <div className="import-actions">
               <button className="button primary" disabled={busy || !session}>{busy ? 'Queuing…' : 'Analyze repo'} <ArrowRight size={17} /></button>
               {session?.oauth && !session.login && <a href="/api/auth/github" className="text-button">Connect GitHub</a>}

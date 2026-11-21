@@ -1,5 +1,6 @@
 
 import asyncio
+import json
 import os
 import tempfile
 import unittest
@@ -7,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 from fastapi.testclient import TestClient
 from neo4j.exceptions import ServiceUnavailable
 
@@ -19,13 +21,18 @@ os.environ["SCAN_WORKER_ENABLED"] = "false"
 os.environ["JUDGE_URL"] = ""
 os.environ["JUDGE_TOKEN"] = ""
 
-from skillforge import config
+from skillforge import commit_history, config, review
 from skillforge.db import close, now, provision, session, transaction
 from skillforge.decision_context import explain
 from skillforge.judge import matches
 from skillforge.main import app
 from skillforge.migrate import migrate
-from skillforge.problem_scoring import assess_submission, best_assessments, developer_index, next_problem
+from skillforge.problem_scoring import (
+    assess_submission,
+    best_assessments,
+    developer_index,
+    next_problem,
+)
 from skillforge.problems import PROBLEMS
 from skillforge.sample import SNAPSHOT
 from skillforge.scanning import LEASE_SECONDS, claim, compile_snapshot, finish, perform
@@ -388,3 +395,82 @@ class WorkspaceTests(unittest.TestCase):
             removed = owner.delete(route + "/github", headers=ORIGIN).raise_for_status().json()
             self.assertIsNone(removed["activity"])
             self.assertEqual(removed["projects"][0]["completed"], [task["id"]])
+
+
+class HistoryReviewTests(unittest.TestCase):
+    def test_reads_revision_and_path_before_github_fallback(self):
+        path = "reader.tsx"
+        key = f"{READER['repo']}:{READER['revision']}:{path}"
+        match = {"sha": "a" * 40, "message": "Persist bookmarks across reloads"}
+        args = (None, READER["repo"], READER["revision"], path)
+        with patch.object(commit_history, "query", return_value=[match]) as graph, \
+                patch("skillforge.github.api") as github:
+            result = asyncio.run(commit_history.file_history(*args))
+            self.assertEqual(result, {"source": "neo4j", "commits": [match]})
+            graph.assert_called_once_with(commit_history.READ, {"key": key})
+            github.assert_not_called()
+
+        with patch.object(commit_history, "query", side_effect=[None, None]) as graph, \
+                patch("skillforge.github.api", return_value=[{"sha": match["sha"], "commit": match}]) as github:
+            result = asyncio.run(commit_history.file_history(*args))
+            self.assertEqual(result, {"source": "github", "commits": [match]})
+            self.assertEqual(github.call_args.args[2], {"sha": READER["revision"], "path": path, "per_page": 5})
+            self.assertEqual(graph.call_args.args[-1]["key"], key)
+
+    def test_consented_worker_review_cites_fix_and_preserves_current_score(self):
+        path = "reader.tsx"
+        sha = "a" * 40
+        quote = "Persist bookmarks across reloads"
+        current_line = "localStorage.setItem('bookmark', String(readingProgress));"
+        current = {"path": path, "line": 3, "code": current_line, "title": "Bookmark persistence",
+                   "detail": "The current handler writes the bookmark to local storage."}
+        history = {path: {"source": "neo4j", "commits": [{"sha": sha, "message": quote}]}}
+        model = {"findings": [{**current, "code": "return readingProgress;", "title": "Old bug"}],
+                 "decisions": [{**current, "sha": sha, "quote": quote}, {**current, "sha": "f" * 40, "quote": quote}]}
+
+        def provider(request):
+            contents = json.loads(json.loads(request.content)["contents"][0]["parts"][0]["text"])
+            self.assertEqual(contents["commitMessages"][path], history[path]["commits"])
+            return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": json.dumps(model)}]}}]})
+
+        provider_client = httpx.AsyncClient(transport=httpx.MockTransport(provider))
+        with TestClient(app) as owner, TestClient(app) as other:
+            owner.get("/api/session").raise_for_status()
+            other.get("/api/session").raise_for_status()
+            with patch("skillforge.main.ai_enabled", return_value=True):
+                job = owner.post("/api/scans", headers=ORIGIN,
+                                 json={"repository": READER["repo"], "ai": True, "history": True})
+                job.raise_for_status()
+            with patch("skillforge.scanning.get_snapshot", return_value=READER), \
+                    patch.object(review, "enabled", return_value=True), \
+                    patch.object(review, "retrieve", return_value=history) as retrieve, \
+                    patch.object(review.httpx, "AsyncClient", return_value=provider_client):
+                asyncio.run(perform(*claim()))
+            retrieve.assert_awaited_once()
+            route = "/api/scans/" + job.json()["id"]
+            self.assertEqual(other.get(route).status_code, 404)
+            report = owner.post(route + "/rubric", json={}, headers=ORIGIN).json()["result"]
+            self.assertEqual(report["quality"]["score"], compile_snapshot(READER)["quality"]["score"])
+            self.assertEqual(report["review"]["findings"], [])
+            self.assertEqual(len(report["review"]["decisions"]), 1)
+            self.assertEqual(report["review"]["decisions"][0]["commit"]["url"],
+                             f"https://github.com/{READER['repo']}/commit/{sha}")
+
+    def test_legacy_ai_consent_does_not_send_history(self):
+        provider_response = {"candidates": [{"content": {"parts": [{"text": '{"findings": []}'}]}}]}
+        provider_client = httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json=provider_response),
+        ))
+        with patch.object(review, "enabled", return_value=True), \
+                patch.object(review, "retrieve") as retrieve, \
+                patch.object(review.httpx, "AsyncClient", return_value=provider_client):
+            result = asyncio.run(review.review(READER, compile_snapshot(READER)["quality"]))
+        retrieve.assert_not_called()
+        self.assertEqual(result["mode"], "reviewed")
+        self.assertEqual(result["historySources"], {})
+
+    def test_history_provider_errors_degrade(self):
+        args = (None, READER["repo"], READER["revision"], "reader.tsx")
+        with patch.object(commit_history, "query", side_effect=ServiceUnavailable("offline")), \
+                patch("skillforge.github.api", side_effect=httpx.ConnectError("offline")):
+            self.assertEqual(asyncio.run(commit_history.file_history(*args)), {"source": "unavailable", "commits": []})

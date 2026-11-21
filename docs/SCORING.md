@@ -13,6 +13,14 @@ The [shared product discussion](https://chatgpt.com/share/6b0166f4-1ad4-83ee-b33
 
 Static scores cover the signals the app can support with evidence. Repository tests, feature behavior, accessibility conformance, security enforcement and performance benchmarks remain unverified by this pipeline. An opt-in Gemini review can add contextual observations tied to matching static evidence. The provider cannot change weights, scores, relevance or ranking eligibility.
 
+For R4 and R10, the opt-in review uses commit messages scoped to the reviewed files and pinned
+revision. It retrieves them through Neo4j before the model runs, with a GitHub fallback. The model
+is instructed to omit already-fixed problems and identify current defects only when the excerpt
+supports them. Every visible review item must quote its cited current line. A documented decision
+also needs an exact quote from an available commit for that path. The scorecard links both sources.
+Versioned static checks still determine deductions from current source, so historical findings,
+model output, and provider outages leave the numeric score reproducible.
+
 ## Scenario-based assessments
 
 | Criterion | Maximum | Evidence |
